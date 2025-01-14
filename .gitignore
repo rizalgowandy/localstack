@@ -5,7 +5,10 @@
 *.iml
 .coverage.*
 htmlcov
+*.orig
 
+.cache
+.filesystem
 /infra/
 localstack/infra/
 
@@ -13,6 +16,7 @@ localstack/infra/
 package-lock.json
 /nosetests.xml
 
+.env
 venv
 /.venv*
 /.coverage
@@ -23,7 +27,6 @@ venv
 *.egg-info/
 .eggs/
 .vagrant/
-*.sw*
 ~*
 *~
 
@@ -49,10 +52,23 @@ requirements.copy.txt
 *tfplan
 *.terraform.lock.hcl
 
-.python-version
-
 venv
 api_states
 
-/integration/lambdas/golang/handler.zip
-/tests/integration/lambdas/golang/handler.zip
+/aws/lambdas/golang/handler.zip
+/tests/aws/lambdas/golang/handler.zip
+tmp/
+
+volume/
+
+# ANTLR4 ID plugin.
+gen/
+
+# hypothesis pytest plugin
+.hypothesis
+
+# RAW snapshots
+*.raw.snapshot.json
+
+# setuptools_scm version.py
+*/*/version.py
