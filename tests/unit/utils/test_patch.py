@@ -1,3 +1,5 @@
+import pytest
+
 from localstack.utils.patch import Patch, get_defining_object, patch
 
 
@@ -105,6 +107,49 @@ def test_patch_decorator_on_bound_method():
     assert MyEchoer().do_echo("foo") == "do_echo: foo"
 
 
+def test_patch_decorator_twice_on_method():
+    @patch(target=MyEchoer.do_echo)
+    def monkey1(self, *args):
+        return f"monkey: {args[-1]}"
+
+    @patch(target=MyEchoer.do_echo)
+    def monkey2(fn, self, *args):
+        return f"monkey 2: {fn(*args)}"
+
+    obj = MyEchoer()
+
+    try:
+        assert obj.do_echo("foo") == "monkey 2: monkey: foo"
+        assert MyEchoer().do_echo("foo") == "monkey 2: monkey: foo"
+    finally:
+        monkey2.patch.undo()
+        monkey1.patch.undo()
+
+    assert obj.do_echo("foo") == "do_echo: foo"
+    assert MyEchoer().do_echo("foo") == "do_echo: foo"
+
+
+@pytest.mark.parametrize("pass_target", [True, False])
+def test_patch_decorator_twice_on_bound_method(pass_target):
+    obj = MyEchoer()
+
+    @patch(target=obj.do_echo, pass_target=pass_target)
+    def monkey1(self, *args):
+        return f"monkey: {args[-1]}"
+
+    @patch(target=obj.do_echo, pass_target=True)
+    def monkey2(self, fn, *args):
+        return f"monkey 2: {fn(*args)}"
+
+    assert obj.do_echo("foo") == "monkey 2: monkey: foo"
+    assert MyEchoer().do_echo("foo") == "do_echo: foo"
+    monkey2.patch.undo()
+    monkey1.patch.undo()
+
+    assert obj.do_echo("foo") == "do_echo: foo"
+    assert MyEchoer().do_echo("foo") == "do_echo: foo"
+
+
 def test_patch_decorator_on_class_method():
     @patch(target=MyEchoer.do_class_echo)
     def uppercase(target, *args):
@@ -124,11 +169,11 @@ def test_patch_decorator_on_class_method():
 
 
 def test_get_defining_object():
-    from localstack.utils import common
-    from localstack.utils.common import short_uid
+    from localstack.utils import strings
+    from localstack.utils.strings import short_uid
 
     # module
-    assert get_defining_object(short_uid) == common
+    assert get_defining_object(short_uid) == strings
 
     # unbound method (=function defined by a class)
     assert get_defining_object(MyEchoer.do_echo) == MyEchoer
@@ -145,3 +190,41 @@ def test_get_defining_object():
 
     # static method (= function defined by a class)
     assert get_defining_object(MyEchoer.do_static_echo) == MyEchoer
+
+
+def test_to_string():
+    @patch(MyEchoer.do_echo)
+    def monkey(self, *args):
+        return f"monkey: {args[-1]}"
+
+    applied = [str(p) for p in Patch.applied_patches]
+
+    value = "Patch(function(tests.unit.utils.test_patch:MyEchoer.do_echo) -> function(tests.unit.utils.test_patch:test_to_string.<locals>.monkey), applied=True)"
+    assert value in applied
+    assert str(monkey.patch) == value
+    monkey.patch.undo()
+
+
+def test_patch_class_type():
+    @patch(MyEchoer)
+    def new_echo(self, *args):
+        return args[1]
+
+    echoer = MyEchoer()
+    assert echoer.new_echo(1, 2, 3) == 2
+    new_echo.patch.undo()
+    with pytest.raises(AttributeError):
+        echoer.new_echo("Hello world!")
+
+    @patch(MyEchoer)
+    def do_echo(self, arg):
+        return arg
+
+    echoer = MyEchoer()
+    assert echoer.do_echo(1) == "do_echo: 1", "existing method is overridden"
+
+    with pytest.raises(AttributeError):
+
+        @patch(MyEchoer.new_echo)
+        def new_echo(self, *args):
+            pass

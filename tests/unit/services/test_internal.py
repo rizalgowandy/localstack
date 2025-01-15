@@ -1,12 +1,9 @@
 from unittest import mock
 
-import requests
-
 from localstack.constants import VERSION
-from localstack.services.internal import HealthResource, LocalstackResourceHandler
+from localstack.http import Request
+from localstack.services.internal import HealthResource
 from localstack.services.plugins import ServiceManager, ServiceState
-from localstack.services.routing import Request
-from localstack.utils.testutil import proxy_server
 
 
 class TestHealthResource:
@@ -20,12 +17,13 @@ class TestHealthResource:
             Request(
                 "PUT",
                 "/",
-                b'{"features:initScripts": "initializing","features:persistence": "disabled"}',
-                {},
+                body=b'{"features:initScripts": "initializing","features:persistence": "disabled"}',
             )
         )
 
-        state = resource.on_get(Request("GET", "/", b"None", {}))
+        state = resource.on_get(Request("GET", "/", body=b"None"))
+        # edition may return a different value depending on how the tests are run
+        state.pop("edition", None)
 
         assert state == {
             "features": {
@@ -48,14 +46,14 @@ class TestHealthResource:
             Request(
                 "PUT",
                 "/",
-                b'{"features:initScripts": "initializing","features:persistence": "disabled"}',
-                {},
+                body=b'{"features:initScripts": "initializing","features:persistence": "disabled"}',
             )
         )
 
-        resource.on_put(Request("PUT", "/", b'{"features:initScripts": "initialized"}', {}))
+        resource.on_put(Request("PUT", "/", body=b'{"features:initScripts": "initialized"}'))
 
-        state = resource.on_get(Request("GET", "/", b"None", {}))
+        state = resource.on_get(Request("GET", "/", body=b"None"))
+        state.pop("edition", None)
 
         assert state == {
             "features": {
@@ -67,36 +65,3 @@ class TestHealthResource:
             },
             "version": VERSION,
         }
-
-
-class TestLocalstackResourceHandlerIntegration:
-    def test_health(self, monkeypatch):
-        with proxy_server(LocalstackResourceHandler()) as url:
-            # legacy endpoint
-            response = requests.get(f"{url}/health")
-            assert response.ok
-            assert "services" in response.json()
-
-            # new internal endpoint
-            response = requests.get(f"{url}/_localstack/health")
-            assert response.ok
-            assert "services" in response.json()
-
-    def test_cloudformation_ui(self):
-        with proxy_server(LocalstackResourceHandler()) as url:
-            # make sure it renders
-            response = requests.get(f"{url}/_localstack/cloudformation/deploy")
-            assert response.ok
-            assert "</html>" in response.text, "deploy UI did not render HTML"
-
-    def test_fallthrough(self):
-        with proxy_server(LocalstackResourceHandler()) as url:
-            # some other error is thrown by the proxy if there are no more listeners
-            response = requests.get(f"{url}/foobar")
-            assert not response.ok
-            assert not response.status_code == 404
-
-            # internal paths are 404ed
-            response = requests.get(f"{url}/_localstack/foobar")
-            assert not response.ok
-            assert response.status_code == 404
